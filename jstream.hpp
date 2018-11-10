@@ -12,7 +12,7 @@ class TransformStream;
 template <typename S, typename F>
 class FlatStream;
 
-template<typename S>
+template <typename S>
 class LimitStream;
 
 template <typename CRTP>
@@ -23,7 +23,6 @@ class Stream
     auto next() { return impl().next(); }
 
   public:
-
     using base_type = Stream<CRTP>;
 
     template <typename F>
@@ -82,7 +81,7 @@ class Stream
         return false;
     }
 
-    template<typename F>
+    template <typename F>
     constexpr bool noneMatch(F &&f)
     {
         bool ret = true;
@@ -206,7 +205,7 @@ class FlatStream : public Stream<FlatStream<S, F>>
     }
 };
 
-template<typename S>
+template <typename S>
 class LimitStream : public Stream<LimitStream<S>>
 {
   private:
@@ -222,7 +221,8 @@ class LimitStream : public Stream<LimitStream<S>>
 
     constexpr auto next()
     {
-        if (_n > 0) {
+        if (_n > 0)
+        {
             _n--;
             return _stream.next();
         }
