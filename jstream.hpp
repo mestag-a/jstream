@@ -54,7 +54,7 @@ private:
 
     constexpr int sum()
     {
-        int sum = 0;
+        typename CRTP::value_type sum = 0;
         for (auto n = next(); n; n = next())
             sum += n->get();
         return sum;
@@ -65,6 +65,8 @@ template <typename S, typename F>
 class FilterStream : public Stream<FilterStream<S, F>>
 {
   public:
+    using value_type = typename S::value_type;
+
     constexpr FilterStream(S &s, F f) : _stream(s), _f(f) {}
 
     constexpr auto next()
@@ -86,6 +88,8 @@ template <typename S, typename F>
 class TransformStream : public Stream<TransformStream<S, F>>
 {
   public:
+    using value_type = typename S::value_type;
+
     constexpr TransformStream(S &s, F f) : _stream(s), _f(f) {}
 
     constexpr auto next()
@@ -104,6 +108,9 @@ template <typename InputIt>
 class IteratorStream : public Stream<IteratorStream<InputIt>>
 {
   public:
+    using traits = std::iterator_traits<InputIt>;
+    using value_type = typename traits::value_type;
+
     constexpr IteratorStream(InputIt begin, InputIt end) : _begin(begin), _end(end) {}
 
     constexpr auto next()
@@ -139,9 +146,11 @@ class FlatStream : public Stream<FlatStream<S, F>>
     S &_stream;
     F _f;
     decltype(_stream.next()) __c;
-    std::optional<decltype(_f(*_stream.next()))> _next;
+    std::optional<decltype(_f(*__c))> _next;
 
   public:
+    using value_type = std::remove_cv_t<typename decltype(_f(*__c))::value_type>;
+
     constexpr FlatStream(S &s, F f) : _stream(s), _f(f) {}
 
     constexpr auto next(bool force = false) -> decltype(_next->next())

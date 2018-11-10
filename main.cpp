@@ -2,13 +2,15 @@
 #include <iostream>
 
 int main() {
-    int array[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    int const array[][10] = {
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}        
+    };
     auto stream = jstream::ArrayStream(array);
 
-    std::cout << (void*)&array << '\n';
-    stream.forEach([](int& elt) {
-        std::cout << (void*)&elt << '\n';
-    });
-
-    return stream.sum();
+    return stream
+            .flatMap([](int const (&arr)[10]) {
+                return jstream::ArrayStream(arr);
+            })
+            .sum();
 }
