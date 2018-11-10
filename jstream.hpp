@@ -3,10 +3,6 @@
 
 namespace jstream
 {
-/*
-** next() should return std::optional<std::reference_wrapper<T>>
-*/
-
 template <typename S, typename F>
 class FilterStream;
 
@@ -16,6 +12,9 @@ class TransformStream;
 template <typename S, typename F>
 class FlatStream;
 
+template<typename S>
+class LimitStream;
+
 template <typename CRTP>
 class Stream
 {
@@ -24,6 +23,9 @@ class Stream
     auto next() { return impl().next(); }
 
   public:
+
+    using base_type = Stream<CRTP>;
+
     template <typename F>
     constexpr auto filter(F &&f) { return FilterStream<CRTP, F>{impl(), std::forward<F>(f)}; }
 
@@ -32,6 +34,8 @@ class Stream
 
     template <typename F>
     constexpr auto flatMap(F &&f) { return FlatStream<CRTP, F>{impl(), std::forward<F>(f)}; }
+
+    constexpr auto limit(std::size_t n) { return LimitStream<CRTP>{impl(), n}; };
 
     template <typename F>
     constexpr void forEach(F &&f)
@@ -54,7 +58,7 @@ class Stream
 
     constexpr int sum()
     {
-        typename CRTP::value_type sum = 0;
+        typename CRTP::value_type sum{};
         for (auto n = next(); n; n = next())
             sum += n->get();
         return sum;
@@ -92,7 +96,9 @@ template <typename S, typename F>
 class FilterStream : public Stream<FilterStream<S, F>>
 {
   public:
+    using true_type = typename S::true_type;
     using value_type = typename S::value_type;
+    using wrapper_type = typename S::wrapper_type;
 
     constexpr FilterStream(S &s, F f) : _stream(s), _f(f) {}
 
@@ -115,7 +121,9 @@ template <typename S, typename F>
 class TransformStream : public Stream<TransformStream<S, F>>
 {
   public:
+    using true_type = typename S::true_type;
     using value_type = typename S::value_type;
+    using wrapper_type = typename S::wrapper_type;
 
     constexpr TransformStream(S &s, F f) : _stream(s), _f(f) {}
 
@@ -135,8 +143,9 @@ template <typename InputIt>
 class IteratorStream : public Stream<IteratorStream<InputIt>>
 {
   public:
-    using traits = std::iterator_traits<InputIt>;
-    using value_type = typename traits::value_type;
+    using true_type = typename std::iterator_traits<InputIt>::reference;
+    using value_type = typename std::iterator_traits<InputIt>::value_type;
+    using wrapper_type = std::optional<std::reference_wrapper<std::remove_reference_t<true_type>>>;
 
     constexpr IteratorStream(InputIt begin, InputIt end) : _begin(begin), _end(end) {}
 
@@ -176,7 +185,9 @@ class FlatStream : public Stream<FlatStream<S, F>>
     std::optional<decltype(_f(__c->get()))> _next;
 
   public:
-    using value_type = std::remove_cv_t<typename decltype(_f(*__c))::value_type>;
+    using true_type = typename std::invoke_result_t<F, typename S::true_type>::true_type;
+    using value_type = std::remove_cv_t<true_type>;
+    using wrapper_type = decltype(_next->next());
 
     constexpr FlatStream(S &s, F f) : _stream(s), _f(f) {}
 
@@ -192,6 +203,30 @@ class FlatStream : public Stream<FlatStream<S, F>>
         }
         auto subN = _next->next();
         return subN ? subN : next(true);
+    }
+};
+
+template<typename S>
+class LimitStream : public Stream<LimitStream<S>>
+{
+  private:
+    S &_stream;
+    std::size_t _n;
+
+  public:
+    using true_type = typename S::true_type;
+    using value_type = typename S::value_type;
+    using wrapper_type = typename S::wrapper_type;
+
+    constexpr LimitStream(S &s, std::size_t n) : _stream(s), _n(n) {}
+
+    constexpr auto next()
+    {
+        if (_n > 0) {
+            _n--;
+            return _stream.next();
+        }
+        return wrapper_type{};
     }
 };
 } // namespace jstream
