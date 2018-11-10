@@ -39,7 +39,7 @@ private:
         auto n = next();
         while (n)
         {
-            std::forward<F>(f)(*n);
+            std::forward<F>(f)(n->get());
             n = next();
         }
     }
@@ -58,6 +58,14 @@ private:
         for (auto n = next(); n; n = next())
             sum += n->get();
         return sum;
+    }
+
+    template<typename F>
+    constexpr bool allMatch(F&& f) {
+        bool ret = true;
+        for (auto n = next(); n; n = next())
+            ret &= std::forward<F>(f)(n->get());
+        return ret;
     }
 };
 
@@ -145,8 +153,8 @@ class FlatStream : public Stream<FlatStream<S, F>>
   private:
     S &_stream;
     F _f;
-    decltype(_stream.next()) __c;
-    std::optional<decltype(_f(*__c))> _next;
+    decltype(_stream.next()) __c; // std::optional<std::reference_wrapper<T>>
+    std::optional<decltype(_f(__c->get()))> _next;
 
   public:
     using value_type = std::remove_cv_t<typename decltype(_f(*__c))::value_type>;
@@ -159,7 +167,7 @@ class FlatStream : public Stream<FlatStream<S, F>>
         {
             __c = _stream.next();
             if (__c)
-                _next = _f(*__c);
+                _next = _f(__c->get());
             else
                 return std::nullopt;
         }
