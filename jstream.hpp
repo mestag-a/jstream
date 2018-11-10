@@ -19,7 +19,7 @@ class FlatStream;
 template <typename CRTP>
 class Stream
 {
-private:
+  private:
     auto &impl() { return *static_cast<CRTP *>(this); }
     auto next() { return impl().next(); }
 
@@ -60,12 +60,22 @@ private:
         return sum;
     }
 
-    template<typename F>
-    constexpr bool allMatch(F&& f) {
+    template <typename F>
+    constexpr bool allMatch(F &&f)
+    {
         bool ret = true;
         for (auto n = next(); n; n = next())
             ret &= std::forward<F>(f)(n->get());
         return ret;
+    }
+
+    template <typename F>
+    constexpr bool anyMatch(F &&f)
+    {
+        for (auto n = next(); n; n = next())
+            if (std::forward<F>(f)(n->get()))
+                return true;
+        return false;
     }
 };
 

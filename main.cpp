@@ -12,10 +12,10 @@ int main() {
             .flatMap([](int const (&arr)[10]) {
                 return jstream::ArrayStream(arr);
             })
-            .filter([](int const& i) {
+            .filter([](int i) {
                 return i % 2 == 0;
             })
-            .allMatch([](int const& i) {
-                return i % 2 == 0;
+            .anyMatch([](int i) {
+                return i == 42;
             });
 }
