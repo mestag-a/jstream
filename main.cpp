@@ -15,7 +15,7 @@ int main() {
             .filter([](int i) {
                 return i % 2 == 0;
             })
-            .anyMatch([](int i) {
-                return i == 42;
+            .noneMatch([](int i) {
+                return i == 0;
             });
 }

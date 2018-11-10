@@ -77,6 +77,15 @@ class Stream
                 return true;
         return false;
     }
+
+    template<typename F>
+    constexpr bool noneMatch(F &&f)
+    {
+        bool ret = true;
+        for (auto n = next(); n; n = next())
+            ret &= !std::forward<F>(f)(n->get());
+        return ret;
+    }
 };
 
 template <typename S, typename F>
