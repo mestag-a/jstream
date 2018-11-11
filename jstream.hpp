@@ -112,6 +112,12 @@ class FilterStream : public Stream<FilterStream<S, F>>
 
     constexpr next_type next()
     {
+        if (_next)
+        {
+            next_type ret = nullptr;
+            std::swap(ret, _next);
+            return ret;
+        }
         while (!empty()) {
             next_type n = _stream.next();
             if (_f(*n))
@@ -120,11 +126,19 @@ class FilterStream : public Stream<FilterStream<S, F>>
         return nullptr;
     }
 
-    constexpr bool empty() { return _stream.empty(); } // ??? TODO: I don't think it's that easy
+    constexpr bool empty() {
+        while (!_stream.empty()) {
+            _next = _stream.next();
+            if (_f(*_next))
+                return false;
+        }
+        return true;
+    }
 
   private:
     S &_stream;
     F _f;
+    next_type _next;
 };
 
 template <typename S, typename F>
@@ -274,5 +288,8 @@ auto of(T (&arr)[N]) { return ArrayStream<T, N>{arr}; }
 
 template<typename InputIt>
 auto of(InputIt beg, InputIt end) { return IteratorStream<InputIt>{beg, end}; } 
+
+template<typename T>
+auto of(std::initializer_list<T> const &list) { return of(std::begin(list), std::end(list)); }
 
 } // namespace jstream
