@@ -39,18 +39,24 @@ int main() {
             {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
         }}
     }};
-    auto arrayStream = jstream::of(array);
-    dump(arrayStream);
-    auto subArrayStream = arrayStream.flatMap([](std::array<std::array<int, 10>, 2> &arr) {
-        return jstream::of(arr);
+    jstream::of(array)
+    .flatMap([](std::array<std::array<int, 10>, 2> &arr) { return jstream::of(arr); })
+    .peek([](auto const &array) {
+        static int i = 0;
+        std::cout << "Peeked: " << i++ << '\n';
+    })
+    .flatMap([](std::array<int, 10> &arr) { return jstream::of(arr); })
+    .limit(3)
+    .peek([](int i) {
+        std::cout << "Peeked after limit: " << i << '\n';
+    })
+    .map([](int i) { return i * 10; })
+    .peek([](int i) {
+        std::cout << "Peeked after map: " << i << '\n';
+    })
+    .filter([](int i) { return i > 10; })
+    .forEach([](int i) {
+        std::cout << i << ", ";
     });
-    dump(subArrayStream);
-    auto ssubArrayStream = subArrayStream.flatMap([](std::array<int, 10> &arr) {
-        return jstream::of(arr);
-    });
-    dump(ssubArrayStream);
-    auto limitStream = ssubArrayStream.limit(3);
-    dump(limitStream);
-
-    return limitStream.count();
+    return 0;
 }

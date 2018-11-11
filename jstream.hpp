@@ -12,6 +12,9 @@ class TransformStream;
 template <typename S, typename F>
 class FlatStream;
 
+template<typename S, typename F>
+class PeekStream;
+
 template <typename S>
 class LimitStream;
 
@@ -33,6 +36,9 @@ class Stream
 
     template <typename F>
     constexpr auto flatMap(F &&f) { return FlatStream<CRTP, F>{impl(), std::forward<F>(f)}; }
+
+    template<typename F>
+    constexpr auto peek(F &&f) { return PeekStream<CRTP, F>{impl(), std::forward<F>(f)}; }
 
     constexpr auto limit(std::size_t n) { return LimitStream<CRTP>{impl(), n}; };
 
@@ -120,22 +126,106 @@ template <typename S, typename F>
 class TransformStream : public Stream<TransformStream<S, F>>
 {
   public:
-    using true_type = typename S::true_type;
-    using value_type = typename S::value_type;
-    using wrapper_type = typename S::wrapper_type;
+    using true_type = typename std::invoke_result_t<F, typename S::true_type>;
+    using value_type = std::remove_cv_t<true_type>;
+    using wrapper_type = std::optional<std::reference_wrapper<std::remove_reference_t<true_type>>>;
 
     constexpr TransformStream(S &s, F f) : _stream(s), _f(f) {}
 
-    constexpr auto next()
+    constexpr auto next() -> wrapper_type
     {
         auto n = _stream.next();
-
-        return n ? std::optional{_f(*n)} : std::nullopt;
+        if (n) {
+            _currentElement = _f(n->get());
+            return wrapper_type{_currentElement};
+        } else {
+            return std::nullopt;
+        }
     }
 
   private:
     S &_stream;
     F _f;
+    true_type _currentElement;
+};
+
+template <typename S, typename F>
+class FlatStream : public Stream<FlatStream<S, F>>
+{
+  public:
+    using substream_type = typename std::invoke_result_t<F, typename S::true_type>;
+    using true_type = typename substream_type::true_type;
+    using value_type = std::remove_cv_t<true_type>;
+    using wrapper_type = std::optional<std::reference_wrapper<std::remove_reference_t<true_type>>>;
+
+    constexpr FlatStream(S &s, F f) : _stream(s), _f(f) {}
+
+    constexpr auto next(bool force = false) -> wrapper_type
+    {
+        if (!_currentSubStream || force)
+        {
+            auto _currentElement = _stream.next();
+            if (_currentElement)
+                _currentSubStream = _f(_currentElement->get());
+            else
+                return std::nullopt;
+        }
+        auto subN = _currentSubStream->next();
+        return subN ? subN : next(true);
+    }
+
+  private:
+    S &_stream;
+    F _f;
+    std::optional<substream_type> _currentSubStream;
+};
+
+template<typename S, typename F>
+class PeekStream : public Stream<PeekStream<S, F>>
+{
+  public:
+    using true_type = typename S::true_type;
+    using value_type = typename S::value_type;
+    using wrapper_type = typename S::wrapper_type;
+
+    constexpr PeekStream(S &s, F f) : _stream(s), _f(f) {}
+
+    constexpr auto next() {
+        auto n = _stream.next();
+
+        if (n)
+            _f(n->get());
+        return n;
+    }
+
+  private:
+    S &_stream;
+    F _f;
+};
+
+template <typename S>
+class LimitStream : public Stream<LimitStream<S>>
+{
+  public:
+    using true_type = typename S::true_type;
+    using value_type = typename S::value_type;
+    using wrapper_type = typename S::wrapper_type;
+
+    constexpr LimitStream(S &s, std::size_t n) : _stream(s), _n(n) {}
+
+    constexpr auto next()
+    {
+        if (_n > 0)
+        {
+            _n--;
+            return _stream.next();
+        }
+        return wrapper_type{};
+    }
+
+  private:
+    S &_stream;
+    std::size_t _n;
 };
 
 template <typename InputIt>
@@ -172,63 +262,6 @@ class ArrayStream : public IteratorStream<T *>
 {
   public:
     constexpr ArrayStream(T (&array)[N]) : IteratorStream<T *>(std::begin(array), std::end(array)) {}
-};
-
-template <typename S, typename F>
-class FlatStream : public Stream<FlatStream<S, F>>
-{
-  public:
-    using substream_type = typename std::invoke_result_t<F, typename S::true_type>;
-    using true_type = typename substream_type::true_type;
-    using value_type = std::remove_cv_t<true_type>;
-    using wrapper_type = std::optional<std::reference_wrapper<std::remove_reference_t<true_type>>>;
-
-    constexpr FlatStream(S &s, F f) : _stream(s), _f(f) {}
-
-    constexpr auto next(bool force = false) -> wrapper_type
-    {
-        if (!_currentSubStream || force)
-        {
-            _currentElement = _stream.next();
-            if (_currentElement)
-                _currentSubStream = _f(_currentElement->get());
-            else
-                return std::nullopt;
-        }
-        auto subN = _currentSubStream->next();
-        return subN ? subN : next(true);
-    }
-
-  private:
-    S &_stream;
-    F _f;
-    typename S::wrapper_type _currentElement;
-    std::optional<substream_type> _currentSubStream;
-};
-
-template <typename S>
-class LimitStream : public Stream<LimitStream<S>>
-{
-  public:
-    using true_type = typename S::true_type;
-    using value_type = typename S::value_type;
-    using wrapper_type = typename S::wrapper_type;
-
-    constexpr LimitStream(S &s, std::size_t n) : _stream(s), _n(n) {}
-
-    constexpr auto next()
-    {
-        if (_n > 0)
-        {
-            _n--;
-            return _stream.next();
-        }
-        return wrapper_type{};
-    }
-
-  private:
-    S &_stream;
-    std::size_t _n;
 };
 
 template<typename C>
