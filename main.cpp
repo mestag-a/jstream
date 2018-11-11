@@ -39,14 +39,14 @@ int main() {
             {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
         }}
     }};
-    auto arrayStream = jstream::ContainerStream(array);
+    auto arrayStream = jstream::of(array);
     dump(arrayStream);
-    auto subArrayStream = arrayStream.flatMap([](std::array<std::array<int, 10>, 2> const &arr) {
-        return jstream::ContainerStream(arr);
+    auto subArrayStream = arrayStream.flatMap([](std::array<std::array<int, 10>, 2> &arr) {
+        return jstream::of(arr);
     });
     dump(subArrayStream);
-    auto ssubArrayStream = subArrayStream.flatMap([](std::array<int, 10> const &arr) {
-        return jstream::ContainerStream(arr);
+    auto ssubArrayStream = subArrayStream.flatMap([](std::array<int, 10> &arr) {
+        return jstream::of(arr);
     });
     dump(ssubArrayStream);
     auto limitStream = ssubArrayStream.limit(3);

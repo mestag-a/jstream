@@ -177,41 +177,38 @@ class ArrayStream : public IteratorStream<T *>
 template <typename S, typename F>
 class FlatStream : public Stream<FlatStream<S, F>>
 {
-  private:
-    S &_stream;
-    F _f;
-    decltype(_stream.next()) __c; // std::optional<std::reference_wrapper<T>>
-    std::optional<decltype(_f(__c->get()))> _next;
-
   public:
-    using true_type = typename std::invoke_result_t<F, typename S::true_type>::true_type;
+    using substream_type = typename std::invoke_result_t<F, typename S::true_type>;
+    using true_type = typename substream_type::true_type;
     using value_type = std::remove_cv_t<true_type>;
-    using wrapper_type = decltype(_next->next());
+    using wrapper_type = std::optional<std::reference_wrapper<std::remove_reference_t<true_type>>>;
 
     constexpr FlatStream(S &s, F f) : _stream(s), _f(f) {}
 
-    constexpr auto next(bool force = false) -> decltype(_next->next())
+    constexpr auto next(bool force = false) -> wrapper_type
     {
-        if (!_next || force)
+        if (!_currentSubStream || force)
         {
-            __c = _stream.next();
-            if (__c)
-                _next = _f(__c->get());
+            _currentElement = _stream.next();
+            if (_currentElement)
+                _currentSubStream = _f(_currentElement->get());
             else
                 return std::nullopt;
         }
-        auto subN = _next->next();
+        auto subN = _currentSubStream->next();
         return subN ? subN : next(true);
     }
+
+  private:
+    S &_stream;
+    F _f;
+    typename S::wrapper_type _currentElement;
+    std::optional<substream_type> _currentSubStream;
 };
 
 template <typename S>
 class LimitStream : public Stream<LimitStream<S>>
 {
-  private:
-    S &_stream;
-    std::size_t _n;
-
   public:
     using true_type = typename S::true_type;
     using value_type = typename S::value_type;
@@ -228,5 +225,19 @@ class LimitStream : public Stream<LimitStream<S>>
         }
         return wrapper_type{};
     }
+
+  private:
+    S &_stream;
+    std::size_t _n;
 };
+
+template<typename C>
+auto of(C &c) { return ContainerStream<C>{c}; }
+
+template<typename T, std::size_t N>
+auto of(T (&arr)[N]) { return ArrayStream<T, N>{arr}; }
+
+template<typename InputIt>
+auto of(InputIt beg, InputIt end) { return IteratorStream<InputIt>{beg, end}; } 
+
 } // namespace jstream
