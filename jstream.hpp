@@ -1,5 +1,6 @@
 #include <functional>
 #include <optional>
+#include <iostream>
 
 namespace jstream
 {
@@ -45,27 +46,26 @@ class Stream
     template <typename F>
     constexpr void forEach(F &&f)
     {
-        auto n = next();
-        while (n)
-        {
-            std::forward<F>(f)(n->get());
-            n = next();
-        }
+        while (!empty())
+            std::forward<F>(f)(*next());
     }
 
     constexpr std::size_t count()
     {
         std::size_t count = 0;
-        while (next())
+        while (!empty())
+        {
             count++;
+            next();
+        }
         return count;
     }
 
-    constexpr int sum()
+    constexpr auto sum()
     {
         typename CRTP::value_type sum{};
-        for (auto n = next(); n; n = next())
-            sum += n->get();
+        while (!empty())
+            sum += next()->get();
         return sum;
     }
 
@@ -73,16 +73,16 @@ class Stream
     constexpr bool allMatch(F &&f)
     {
         bool ret = true;
-        for (auto n = next(); n; n = next())
-            ret &= std::forward<F>(f)(n->get());
+        while (!empty())
+            ret &= std::forward<F>(f)(next()->get());
         return ret;
     }
 
     template <typename F>
     constexpr bool anyMatch(F &&f)
     {
-        for (auto n = next(); n; n = next())
-            if (std::forward<F>(f)(n->get()))
+        while (!empty())
+            if (std::forward<F>(f)(next()->get()))
                 return true;
         return false;
     }
@@ -91,9 +91,13 @@ class Stream
     constexpr bool noneMatch(F &&f)
     {
         bool ret = true;
-        for (auto n = next(); n; n = next())
-            ret &= !std::forward<F>(f)(n->get());
+        while (!empty())
+            ret &= !std::forward<F>(f)(next()->get());
         return ret;
+    }
+
+    constexpr bool empty() {
+        return impl().empty();
     }
 };
 
@@ -101,9 +105,9 @@ template <typename S, typename F>
 class FilterStream : public Stream<FilterStream<S, F>>
 {
   public:
-    using true_type = typename S::true_type;
-    using value_type = typename S::value_type;
-    using wrapper_type = typename S::wrapper_type;
+    // using true_type = typename S::true_type;
+    // using value_type = typename S::value_type;
+    // using wrapper_type = typename S::wrapper_type;
 
     constexpr FilterStream(S &s, F f) : _stream(s), _f(f) {}
 
@@ -117,6 +121,8 @@ class FilterStream : public Stream<FilterStream<S, F>>
         return n;
     }
 
+    constexpr auto empty() { return _stream.empty(); }
+
   private:
     S &_stream;
     F _f;
@@ -126,22 +132,22 @@ template <typename S, typename F>
 class TransformStream : public Stream<TransformStream<S, F>>
 {
   public:
-    using true_type = typename std::invoke_result_t<F, typename S::true_type>;
-    using value_type = std::remove_cv_t<true_type>;
-    using wrapper_type = std::optional<std::reference_wrapper<std::remove_reference_t<true_type>>>;
+    using substream_next_type = std::invoke_result_t<decltype(&S::next), S*>;
+    using true_type = std::invoke_result_t<F, decltype(*substream_next_type{})>;
 
     constexpr TransformStream(S &s, F f) : _stream(s), _f(f) {}
 
-    constexpr auto next() -> wrapper_type
+    constexpr auto next() -> true_type*
     {
-        auto n = _stream.next();
-        if (n) {
-            _currentElement = _f(n->get());
-            return wrapper_type{_currentElement};
+        if (!empty()) {
+            _currentElement = _f(*_stream.next());
+            return &_currentElement;
         } else {
-            return std::nullopt;
+            return nullptr;
         }
     }
+
+    constexpr auto empty() { return _stream.empty(); }
 
   private:
     S &_stream;
@@ -174,6 +180,8 @@ class FlatStream : public Stream<FlatStream<S, F>>
         return subN ? subN : next(true);
     }
 
+    constexpr auto empty() { return _stream.empty() && (!_currentSubStream || _currentSubStream->empty()); }
+
   private:
     S &_stream;
     F _f;
@@ -197,6 +205,8 @@ class PeekStream : public Stream<PeekStream<S, F>>
             _f(n->get());
         return n;
     }
+
+    constexpr auto empty() { return _stream.empty(); }
 
   private:
     S &_stream;
@@ -223,6 +233,8 @@ class LimitStream : public Stream<LimitStream<S>>
         return wrapper_type{};
     }
 
+    constexpr auto empty() { return _n <= 0 || _stream.empty(); }
+
   private:
     S &_stream;
     std::size_t _n;
@@ -238,11 +250,11 @@ class IteratorStream : public Stream<IteratorStream<InputIt>>
 
     constexpr IteratorStream(InputIt begin, InputIt end) : _begin(begin), _end(end) {}
 
+    constexpr bool empty() { return _begin == _end; }
+
     constexpr auto next()
     {
-        return _begin != _end
-                   ? std::optional{std::ref(*_begin++)}
-                   : std::nullopt;
+        return _begin++;
     }
 
   private:
