@@ -32,19 +32,13 @@ void dump(T &&t) { dump<T>(); }
 
 int main() {
     std::array<int, 10> array{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-    jstream::of(array)
+    return jstream::of(array)
         .filter([](int i) { return i >= 5; })
         .map([](int i) { return i * 10; })
-        .peek([](int i) {
-            std::cout << "Peeking: " << i << '\n';
-        })
         .map([](int i) { return std::to_string(i); })
         .flatMap([](std::string const &s) {
-            std::cout << "flatMapping: " << s << '\n';
             return jstream::of(s);
         })
-        .forEach([](char c) {
-            std::cout << c << '\n';
-        });
-    return 0;
+        .limit(2)
+        .sum();
 }
