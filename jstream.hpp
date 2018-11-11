@@ -65,7 +65,7 @@ class Stream
     {
         typename CRTP::value_type sum{};
         while (!empty())
-            sum += next()->get();
+            sum += *next();
         return sum;
     }
 
@@ -74,7 +74,7 @@ class Stream
     {
         bool ret = true;
         while (!empty())
-            ret &= std::forward<F>(f)(next()->get());
+            ret &= std::forward<F>(f)(*next());
         return ret;
     }
 
@@ -82,7 +82,7 @@ class Stream
     constexpr bool anyMatch(F &&f)
     {
         while (!empty())
-            if (std::forward<F>(f)(next()->get()))
+            if (std::forward<F>(f)(*next()))
                 return true;
         return false;
     }
@@ -92,7 +92,7 @@ class Stream
     {
         bool ret = true;
         while (!empty())
-            ret &= !std::forward<F>(f)(next()->get());
+            ret &= !std::forward<F>(f)(*next());
         return ret;
     }
 
@@ -132,7 +132,7 @@ class TransformStream : public Stream<TransformStream<S, F>>
 {
   public:
     using next_type = std::invoke_result_t<F, decltype(* typename S::next_type{})> *;
-    using value_type = std::remove_pointer_t<std::remove_cv_t<next_type>>;
+    using value_type = std::remove_cv_t<std::remove_pointer_t<next_type>>;
 
     constexpr TransformStream(S &s, F f) : _stream(s), _f(f) {}
 
@@ -161,7 +161,7 @@ class FlatStream : public Stream<FlatStream<S, F>>
     using substream_next_type = std::invoke_result_t<decltype(&S::next), S*>;
     using flat_stream_type = std::invoke_result_t<F, decltype(*substream_next_type{})>;
     using next_type = std::invoke_result_t<decltype(&flat_stream_type::next), flat_stream_type*>;
-    using value_type = std::remove_pointer_t<std::remove_cv_t<next_type>>;
+    using value_type = std::remove_cv_t<std::remove_pointer_t<next_type>>;
 
     constexpr FlatStream(S &s, F f) : _stream(s), _f(f) {}
 
