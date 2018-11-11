@@ -105,23 +105,22 @@ template <typename S, typename F>
 class FilterStream : public Stream<FilterStream<S, F>>
 {
   public:
-    // using true_type = typename S::true_type;
-    // using value_type = typename S::value_type;
-    // using wrapper_type = typename S::wrapper_type;
+    using next_type = typename S::next_type;
+    using value_type = typename S::value_type;
 
     constexpr FilterStream(S &s, F f) : _stream(s), _f(f) {}
 
-    constexpr auto next()
+    constexpr next_type next()
     {
-        auto n = _stream.next();
-        while (n && !_f(*n))
-        {
-            n = _stream.next();
+        while (!empty()) {
+            next_type n = _stream.next();
+            if (_f(*n))
+                return n;
         }
-        return n;
+        return nullptr;
     }
 
-    constexpr auto empty() { return _stream.empty(); }
+    constexpr bool empty() { return _stream.empty(); } // ??? TODO: I don't think it's that easy
 
   private:
     S &_stream;
@@ -132,12 +131,12 @@ template <typename S, typename F>
 class TransformStream : public Stream<TransformStream<S, F>>
 {
   public:
-    using substream_next_type = std::invoke_result_t<decltype(&S::next), S*>;
-    using true_type = std::invoke_result_t<F, decltype(*substream_next_type{})>;
+    using next_type = std::invoke_result_t<F, decltype(* typename S::next_type{})> *;
+    using value_type = std::remove_pointer_t<std::remove_cv_t<next_type>>;
 
     constexpr TransformStream(S &s, F f) : _stream(s), _f(f) {}
 
-    constexpr auto next() -> true_type*
+    constexpr next_type next()
     {
         if (!empty()) {
             _currentElement = _f(*_stream.next());
@@ -147,66 +146,62 @@ class TransformStream : public Stream<TransformStream<S, F>>
         }
     }
 
-    constexpr auto empty() { return _stream.empty(); }
+    constexpr bool empty() { return _stream.empty(); }
 
   private:
     S &_stream;
     F _f;
-    true_type _currentElement;
+    value_type _currentElement;
 };
 
 template <typename S, typename F>
 class FlatStream : public Stream<FlatStream<S, F>>
 {
   public:
-    using substream_type = typename std::invoke_result_t<F, typename S::true_type>;
-    using true_type = typename substream_type::true_type;
-    using value_type = std::remove_cv_t<true_type>;
-    using wrapper_type = std::optional<std::reference_wrapper<std::remove_reference_t<true_type>>>;
+    using substream_next_type = std::invoke_result_t<decltype(&S::next), S*>;
+    using flat_stream_type = std::invoke_result_t<F, decltype(*substream_next_type{})>;
+    using next_type = std::invoke_result_t<decltype(&flat_stream_type::next), flat_stream_type*>;
+    using value_type = std::remove_pointer_t<std::remove_cv_t<next_type>>;
 
     constexpr FlatStream(S &s, F f) : _stream(s), _f(f) {}
 
-    constexpr auto next(bool force = false) -> wrapper_type
+    constexpr next_type next(bool force = false)
     {
-        if (!_currentSubStream || force)
+        if (!_currentFlatStream || force)
         {
-            auto _currentElement = _stream.next();
-            if (_currentElement)
-                _currentSubStream = _f(_currentElement->get());
+            if (!_stream.empty())
+                _currentFlatStream = _f(*_stream.next());
             else
-                return std::nullopt;
+                return nullptr;
         }
-        auto subN = _currentSubStream->next();
-        return subN ? subN : next(true);
+        return _currentFlatStream->empty() ? next(true) : _currentFlatStream->next();
     }
 
-    constexpr auto empty() { return _stream.empty() && (!_currentSubStream || _currentSubStream->empty()); }
+    constexpr bool empty() { return _stream.empty() && (!_currentFlatStream || _currentFlatStream->empty()); }
 
   private:
     S &_stream;
     F _f;
-    std::optional<substream_type> _currentSubStream;
+    std::optional<flat_stream_type> _currentFlatStream;
 };
 
 template<typename S, typename F>
 class PeekStream : public Stream<PeekStream<S, F>>
 {
   public:
-    using true_type = typename S::true_type;
+    using next_type = typename S::next_type;
     using value_type = typename S::value_type;
-    using wrapper_type = typename S::wrapper_type;
 
     constexpr PeekStream(S &s, F f) : _stream(s), _f(f) {}
 
-    constexpr auto next() {
-        auto n = _stream.next();
-
+    constexpr next_type next() {
+        next_type n = _stream.next();
         if (n)
-            _f(n->get());
+            _f(*n);
         return n;
     }
 
-    constexpr auto empty() { return _stream.empty(); }
+    constexpr bool empty() { return _stream.empty(); }
 
   private:
     S &_stream;
@@ -217,23 +212,22 @@ template <typename S>
 class LimitStream : public Stream<LimitStream<S>>
 {
   public:
-    using true_type = typename S::true_type;
+    using next_type = typename S::next_type;
     using value_type = typename S::value_type;
-    using wrapper_type = typename S::wrapper_type;
 
     constexpr LimitStream(S &s, std::size_t n) : _stream(s), _n(n) {}
 
-    constexpr auto next()
+    constexpr next_type next()
     {
-        if (_n > 0)
+        if (_n > 0 && !_stream.empty())
         {
             _n--;
             return _stream.next();
         }
-        return wrapper_type{};
+        return nullptr;
     }
 
-    constexpr auto empty() { return _n <= 0 || _stream.empty(); }
+    constexpr bool empty() { return _n <= 0 || _stream.empty(); }
 
   private:
     S &_stream;
@@ -244,18 +238,14 @@ template <typename InputIt>
 class IteratorStream : public Stream<IteratorStream<InputIt>>
 {
   public:
-    using true_type = typename std::iterator_traits<InputIt>::reference;
+    using next_type = typename std::iterator_traits<InputIt>::pointer;
     using value_type = typename std::iterator_traits<InputIt>::value_type;
-    using wrapper_type = std::optional<std::reference_wrapper<std::remove_reference_t<true_type>>>;
 
     constexpr IteratorStream(InputIt begin, InputIt end) : _begin(begin), _end(end) {}
 
     constexpr bool empty() { return _begin == _end; }
 
-    constexpr auto next()
-    {
-        return _begin++;
-    }
+    constexpr next_type next() { return &*_begin++; }
 
   private:
     InputIt _begin;

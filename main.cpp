@@ -35,8 +35,16 @@ int main() {
     jstream::of(array)
         .filter([](int i) { return i >= 5; })
         .map([](int i) { return i * 10; })
-        .forEach([](int i) {
-            std::cout << i << '\n';
+        .peek([](int i) {
+            std::cout << "Peeking: " << i << '\n';
+        })
+        .map([](int i) { return std::to_string(i); })
+        .flatMap([](std::string const &s) {
+            std::cout << "flatMapping: " << s << '\n';
+            return jstream::of(s);
+        })
+        .forEach([](char c) {
+            std::cout << c << '\n';
         });
     return 0;
 }
